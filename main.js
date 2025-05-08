@@ -1,4 +1,3 @@
-// main.js
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
@@ -22,15 +21,29 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
 directionalLight.position.set(10, 10, 10);
 scene.add(directionalLight);
 
-// → Ahora casillas se llenará dinámicamente tras cargar el tablero
 let casillas = [];
 
-// Mapa de escaleras y serpientes (0-based index)
+// Función de escaleras y las serpientes 
 const snakesAndLadders = {
-  3: 22,
-  5: 8,
-  17: 4,
-  // …añade el resto según tu diseño…
+  3: 24,
+  7: 50,
+  27: 45,
+  38: 59,
+  43: 79,
+  51: 67,
+  68: 92,
+  65: 86,
+  70: 91,
+  83: 97,
+
+  10: 8,
+  35: 13,
+  56: 18,
+  93: 47,
+  89: 48,
+  98: 62,
+  95: 65,
+
 };
 
 let numJugadores = 1;
@@ -43,7 +56,7 @@ let turnoActual = 1;
 let posiciones = { 1: 0, 2: 0 };
 let jugadores = { 1: null, 2: null };
 
-// === Botón de inicio ===
+//Botón de inicio
 document.getElementById('start-button').addEventListener('click', () => {
   numJugadores = parseInt(document.getElementById('player-count').value);
   document.getElementById('start-menu').style.display = 'none';
@@ -53,7 +66,7 @@ document.getElementById('start-button').addEventListener('click', () => {
   cargarJugadores();
 });
 
-// === Carga de jugadores ===
+//Carga de jugadores
 function cargarJugadores() {
   if (!jugador1Cargado) {
     new MTLLoader().setPath('/src/Jugador1/').load('Jugador1R.mtl', materials => {
@@ -81,7 +94,7 @@ function cargarJugadores() {
   }
 }
 
-// === Cargar modelo Dado ===
+// Cargar modelo Dado
 new MTLLoader().setPath('/src/Dado/').load('Dado.mtl', materials => {
   materials.preload();
   new OBJLoader().setMaterials(materials).setPath('/src/Dado/').load('Dado.obj', obj => {
@@ -92,18 +105,18 @@ new MTLLoader().setPath('/src/Dado/').load('Dado.mtl', materials => {
   });
 });
 
-// === Cargar modelo Tablero y generar casillas ===
+// Cargar modelo Tablero y generar casillas
 new MTLLoader().setPath('/src/Tablero/').load('Tablero.mtl', materials => {
   materials.preload();
   new OBJLoader().setMaterials(materials).setPath('/src/Tablero/').load('Tablero.obj', board => {
     board.scale.set(10,10,10);
     board.position.set(0, -1, 0);
+    board.rotation.y = THREE.MathUtils.degToRad(270);
     scene.add(board);
     generateCasillas(board);
   });
 });
 
-// === Función para generar automáticamente las 100 casillas ===
 function generateCasillas(boardMesh) {
   const bbox = new THREE.Box3().setFromObject(boardMesh);
   const min = bbox.min, max = bbox.max;
@@ -115,18 +128,20 @@ function generateCasillas(boardMesh) {
   casillas = [];
   for (let fila = 0; fila < 10; fila++) {
     for (let col = 0; col < 10; col++) {
-      // en zig-zag:
+      // zig-zag según fila
       const j = (fila % 2 === 0) ? col : (9 - col);
+      // X avanza de izquierda (min.x) a derecha (max.x)
       const x = min.x + j * cellW + cellW / 2;
-      const z = min.z + fila * cellD + cellD / 2;
+      // Z empieza en max.z (parte inferior en cámara) y retrocede hacia min.z
+      const z = max.z - fila * cellD - cellD / 2;
       casillas.push({ x, z });
     }
   }
 }
 
-// === Evento Tirar Dado ===
+//Tirar dado
 document.getElementById('roll-button').addEventListener('click', () => {
-  if (!dadoModel || isRolling || casillas.length !== 100) return;  // espera a que casillas esté listo
+  if (!dadoModel || isRolling || casillas.length !== 100) return;
   isRolling = true;
   const resultado = Math.floor(Math.random() * 6) + 1;
   document.getElementById('dice-result').textContent = `Resultado: ${resultado}`;
@@ -150,13 +165,19 @@ document.getElementById('roll-button').addEventListener('click', () => {
     if (u >= 1) {
       dadoModel.rotation.x = destino.x;
       dadoModel.rotation.y = destino.y;
-      // una vez gira el dado, movemos al jugador paso a paso:
+
+      // Avanza casilla a casilla y aplica serpientes/escaleras
       const jugador = jugadores[turnoActual];
       const idx0 = posiciones[turnoActual];
       moverPasoAPaso(jugador, idx0, resultado, () => {
         let idx1 = Math.min(idx0 + resultado, 99);
-        // comprueba serpiente o escalera
-        if (snakesAndLadders[idx1] !== undefined) {
+        if (idx1 === 99) {
+          posiciones[turnoActual] = idx1;
+          animarMovimientoJugador(jugador, casillas[idx1], 500, () => {
+            alert(`¡Jugador ${turnoActual} ha ganado el juego!`);
+            finalizarTurno();
+          });
+        } else if (snakesAndLadders[idx1] !== undefined) {
           const idx2 = snakesAndLadders[idx1];
           posiciones[turnoActual] = idx2;
           animarMovimientoJugador(jugador, casillas[idx2], 500, finalizarTurno);
@@ -167,7 +188,7 @@ document.getElementById('roll-button').addEventListener('click', () => {
       });
       return;
     }
-    // animación intermedia
+    //animación intermedia del dado
     dadoModel.rotation.x = inicio.x + giros*(1 - Math.cos(Math.PI*u)) + (destino.x - inicio.x)*u;
     dadoModel.rotation.y = inicio.y + giros*(1 - Math.cos(Math.PI*u)) + (destino.y - inicio.y)*u;
     requestAnimationFrame(rotarPaso);
@@ -175,7 +196,7 @@ document.getElementById('roll-button').addEventListener('click', () => {
   requestAnimationFrame(rotarPaso);
 });
 
-// === Animación con callback ===
+//Animación jugador con callback
 function animarMovimientoJugador(jugador, destino, duracion = 500, onComplete) {
   const sx = jugador.position.x, sz = jugador.position.z, t0 = performance.now();
   function paso(t) {
@@ -188,7 +209,7 @@ function animarMovimientoJugador(jugador, destino, duracion = 500, onComplete) {
   requestAnimationFrame(paso);
 }
 
-// === Movimiento casilla a casilla ===
+//Movimiento casilla a casilla
 function moverPasoAPaso(jugador, idx, pasos, onFinished) {
   if (pasos <= 0) { onFinished(); return; }
   const next = Math.min(idx + 1, casillas.length - 1);
@@ -197,7 +218,7 @@ function moverPasoAPaso(jugador, idx, pasos, onFinished) {
   });
 }
 
-// === Finalizar turno ===
+//Finalizar turno
 function finalizarTurno() {
   isRolling = false;
   if (numJugadores === 2) {
@@ -206,7 +227,7 @@ function finalizarTurno() {
   }
 }
 
-// === Render Loop ===
+//render
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
